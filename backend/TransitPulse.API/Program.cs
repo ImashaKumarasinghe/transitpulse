@@ -1,46 +1,60 @@
+using Microsoft.EntityFrameworkCore;        // Needed for DbContext and EF Core
+using TransitPulse.API.Data;               // Import your AppDbContext
+
+// Create the builder (this is where we configure services)
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
+
+// ADD SERVICES TO THE CONTAINER
+
+
+// Enable controllers (API endpoints like /api/users)
+builder.Services.AddControllers();
+
+// Enable Swagger (API testing UI)
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+
+// REGISTER DATABASE (VERY IMPORTANT)
+
+// This tells the app:
+// "Use AppDbContext as database manager"
+// "Connect it to PostgreSQL using connection string from appsettings.json"
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    )
+);
+
+
+// BUILD THE APPLICATION
+
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
+
+// CONFIGURE MIDDLEWARE PIPELINE
+
+// If app is running in Development mode
+// enable Swagger UI (so you can test APIs easily)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Optional for now - you can comment this if HTTPS warning bothers you
-// app.UseHttpsRedirection();
+// Redirect HTTP → HTTPS (security)
+app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild",
-    "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// Enable authorization (used later with JWT)
+app.UseAuthorization();
 
-app.MapGet("/", () => "TransitPulse API is running!");
+// Map controllers to routes
+// Example: /api/users, /api/routes
+app.MapControllers();
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
 
-    return forecast;
-});
+// RUN THE APPLICATION
+
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
