@@ -17,7 +17,7 @@ namespace TransitPulse.API.Data
         public DbSet<User> Users { get; set; }
 
         // Routes table
-        public DbSet<Route> Routes { get; set; }
+        public DbSet<Models.Route> Routes { get; set; }
 
         // CrowdReports table
         public DbSet<CrowdReport> CrowdReports { get; set; }
