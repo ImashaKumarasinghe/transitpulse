@@ -1,12 +1,38 @@
 using Microsoft.EntityFrameworkCore;        // Needed for DbContext and EF Core
 using TransitPulse.API.Data;               // Import your AppDbContext
+using TransitPulse.API.Services;           // Import your AuthService and IAuthService
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
 
 // Create the builder (this is where we configure services)
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!);
+
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(key)
+    };
+});
+
 
 // ADD SERVICES TO THE CONTAINER
-
+builder.Services.AddScoped<IAuthService, AuthService>();
 
 // Enable controllers (API endpoints like /api/users)
 builder.Services.AddControllers();
@@ -47,6 +73,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 
 // Enable authorization (used later with JWT)
+app.UseAuthentication();
 app.UseAuthorization();
 
 // Map controllers to routes
