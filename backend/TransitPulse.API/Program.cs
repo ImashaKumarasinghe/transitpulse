@@ -1,22 +1,96 @@
-using Microsoft.EntityFrameworkCore;        // Needed for DbContext and EF Core
-using TransitPulse.API.Data;               // Import your AppDbContext
-using TransitPulse.API.Services;           // Import your AuthService and IAuthService
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
-using System.Text;
+// ================================
+// USING STATEMENTS (IMPORTS)
+// ================================
 
-// Create the builder (this is where we configure services)
+using Microsoft.AspNetCore.Authentication.JwtBearer; // JWT authentication
+using Microsoft.EntityFrameworkCore;                 // EF Core (database)
+using Microsoft.IdentityModel.Tokens;                // Token validation
+using Microsoft.OpenApi;                             // Swagger / OpenAPI types
+using System.Text;                                   // Encoding for JWT key
+using TransitPulse.API.Data;                         // DbContext
+using TransitPulse.API.Services;                     // AuthService
+
+// ================================
+// CREATE APPLICATION BUILDER
+// ================================
+
 var builder = WebApplication.CreateBuilder(args);
+
+// ================================
+// ADD SERVICES
+// ================================
+
+// Enable controllers (API endpoints)
+builder.Services.AddControllers();
+
+// Required for Swagger
+builder.Services.AddEndpointsApiExplorer();
+
+// ================================
+// SWAGGER + JWT CONFIGURATION
+// ================================
+
+builder.Services.AddSwaggerGen(options =>
+{
+    // Basic Swagger information
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "TransitPulse API",
+        Version = "v1"
+    });
+
+    // Define JWT authentication in Swagger
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter JWT token like: Bearer your_token_here"
+    });
+
+    // Apply JWT authentication to Swagger requests
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
+});
+
+// ================================
+// DATABASE CONFIGURATION
+// ================================
+
+// Register DbContext (connects to PostgreSQL)
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    )
+);
+
+// ================================
+// REGISTER CUSTOM SERVICES
+// ================================
+
+// Register AuthService for dependency injection
+builder.Services.AddScoped<IAuthService, AuthService>();
+
+// ================================
+// JWT AUTHENTICATION CONFIGURATION
+// ================================
 
 builder.Services.AddAuthentication(options =>
 {
+    // Set JWT as default authentication method
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
     options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
 .AddJwtBearer(options =>
 {
+    // Get secret key from appsettings.json
     var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!);
 
+    // Define how JWT should be validated
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuer = true,
@@ -30,58 +104,36 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+// ================================
+// ENABLE AUTHORIZATION
+// ================================
 
-// ADD SERVICES TO THE CONTAINER
-builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddAuthorization();
 
-// Enable controllers (API endpoints like /api/users)
-builder.Services.AddControllers();
-
-// Enable Swagger (API testing UI)
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-
-// REGISTER DATABASE (VERY IMPORTANT)
-
-// This tells the app:
-// "Use AppDbContext as database manager"
-// "Connect it to PostgreSQL using connection string from appsettings.json"
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(
-        builder.Configuration.GetConnectionString("DefaultConnection")
-    )
-);
-
-
-// BUILD THE APPLICATION
+// ================================
+// BUILD APPLICATION
+// ================================
 
 var app = builder.Build();
 
+// ================================
+// MIDDLEWARE PIPELINE
+// ================================
 
-// CONFIGURE MIDDLEWARE PIPELINE
-
-// If app is running in Development mode
-// enable Swagger UI (so you can test APIs easily)
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
-// Redirect HTTP → HTTPS (security)
 app.UseHttpsRedirection();
 
-// Enable authorization (used later with JWT)
+// Authentication must come before Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Map controllers to routes
-// Example: /api/users, /api/routes
+// Map controllers
 app.MapControllers();
 
-
-// RUN THE APPLICATION
-
-
+// Run application
 app.Run();
