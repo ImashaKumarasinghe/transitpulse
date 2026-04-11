@@ -24,6 +24,8 @@ var builder = WebApplication.CreateBuilder(args);
 // ================================
 builder.Services.AddScoped<IRouteRepository, RouteRepository>();
 builder.Services.AddScoped<IRouteService, RouteService>();
+builder.Services.AddScoped<ICrowdReportRepository, CrowdReportRepository>();
+builder.Services.AddScoped<ICrowdReportService, CrowdReportService>();
 
 // Enable controllers (API endpoints)
 builder.Services.AddControllers();
@@ -108,6 +110,8 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(key)
     };
 });
+builder.Services.AddScoped<ICrowdReportRepository, CrowdReportRepository>();
+builder.Services.AddScoped<ICrowdReportService, CrowdReportService>();
 
 // ================================
 // ENABLE AUTHORIZATION
