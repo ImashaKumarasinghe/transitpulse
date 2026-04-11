@@ -9,6 +9,7 @@ using Microsoft.OpenApi;                             // Swagger / OpenAPI types
 using System.Text;                                   // Encoding for JWT key
 using TransitPulse.API.Data;                         // DbContext
 using TransitPulse.API.Services;                     // AuthService
+using TransitPulse.API.Repositories;
 
 // ================================
 // CREATE APPLICATION BUILDER
@@ -16,9 +17,13 @@ using TransitPulse.API.Services;                     // AuthService
 
 var builder = WebApplication.CreateBuilder(args);
 
+
+
 // ================================
 // ADD SERVICES
 // ================================
+builder.Services.AddScoped<IRouteRepository, RouteRepository>();
+builder.Services.AddScoped<IRouteService, RouteService>();
 
 // Enable controllers (API endpoints)
 builder.Services.AddControllers();
