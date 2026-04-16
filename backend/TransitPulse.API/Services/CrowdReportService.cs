@@ -1,72 +1,55 @@
-using Microsoft.EntityFrameworkCore; // For database queries (FirstOrDefaultAsync)
-using TransitPulse.API.Data;         // AppDbContext (DB connection)
-using TransitPulse.API.DTOs;         // DTOs (input data)
-using TransitPulse.API.Models;       // Models (CrowdReport, CurrentRouteStatus)
-using TransitPulse.API.Repositories; // Repository interface
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
+using TransitPulse.API.Data;
+using TransitPulse.API.DTOs;
+using TransitPulse.API.Hubs;
+using TransitPulse.API.Models;
+using TransitPulse.API.Repositories;
 
 namespace TransitPulse.API.Services
 {
-    // This class implements ICrowdReportService
     public class CrowdReportService : ICrowdReportService
     {
-        // Repository for crowd reports
         private readonly ICrowdReportRepository _reportRepo;
-
-        // Direct DB context (used for CurrentRouteStatus table)
         private readonly AppDbContext _context;
+        private readonly IHubContext<RouteHub> _hubContext;
 
-        // Constructor - Dependency Injection
-        public CrowdReportService(ICrowdReportRepository reportRepo, AppDbContext context)
+        public CrowdReportService(
+            ICrowdReportRepository reportRepo,
+            AppDbContext context,
+            IHubContext<RouteHub> hubContext)
         {
             _reportRepo = reportRepo;
             _context = context;
+            _hubContext = hubContext;
         }
 
-        // Main method to submit a crowd report
         public async Task SubmitReportAsync(int userId, CreateCrowdReportDto dto)
         {
-            // -------------------------------
-            // 1. SAVE NEW REPORT
-            // -------------------------------
-
-            // Create CrowdReport object from input DTO
+            // 1. Save report
             var report = new CrowdReport
             {
-                UserId = userId,                    // Who submitted the report
-                RouteId = dto.RouteId,              // Which route
-                CrowdLevel = dto.CrowdLevel,        // Crowd level (Low/Medium/High)
-                ReportedLocation = dto.ReportedLocation, // Optional location
-                ReportedAt = DateTime.UtcNow        // Current time (important for filtering)
+                UserId = userId,
+                RouteId = dto.RouteId,
+                CrowdLevel = dto.CrowdLevel,
+                ReportedLocation = dto.ReportedLocation,
+                ReportedAt = DateTime.UtcNow
             };
 
-            // Save report in database
             await _reportRepo.AddAsync(report);
 
-            // -------------------------------
-            // 2. GET RECENT REPORTS
-            // -------------------------------
-
-            // Get reports from last 1 hour (repository logic)
+            // 2. Get recent reports
             var reports = await _reportRepo.GetRecentReportsAsync(dto.RouteId);
 
-            // -------------------------------
-            // 3. CALCULATE CURRENT CROWD LEVEL
-            // -------------------------------
-
-            // Determine overall crowd level based on recent reports
+            // 3. Calculate crowd level
             var crowdLevel = CalculateCrowdLevel(reports);
 
-            // -------------------------------
-            // 4. UPDATE CURRENT ROUTE STATUS
-            // -------------------------------
-
-            // Check if status already exists for this route
+            // 4. Update CurrentRouteStatus
             var status = await _context.CurrentRouteStatuses
                 .FirstOrDefaultAsync(s => s.RouteId == dto.RouteId);
 
             if (status == null)
             {
-                // If no status exists → create new one
                 status = new CurrentRouteStatus
                 {
                     RouteId = dto.RouteId,
@@ -79,34 +62,39 @@ namespace TransitPulse.API.Services
             }
             else
             {
-                // If exists → update existing record
                 status.CurrentCrowdLevel = crowdLevel;
                 status.LastUpdated = DateTime.UtcNow;
                 status.RecentReportCount = reports.Count;
             }
 
-            // Save status changes
             await _context.SaveChangesAsync();
+
+            // 5. Send real-time update to clients in the correct route group
+            var routeGroupName = $"route-{dto.RouteId}";
+
+            var updateDto = new RouteStatusUpdateDto
+            {
+                RouteId = dto.RouteId,
+                CurrentCrowdLevel = status.CurrentCrowdLevel,
+                LastUpdated = status.LastUpdated,
+                RecentReportCount = status.RecentReportCount
+            };
+
+            await _hubContext.Clients
+                .Group(routeGroupName)
+                .SendAsync("ReceiveRouteStatusUpdate", updateDto);
         }
 
-        // ----------------------------------------
-        // HELPER METHOD: CALCULATE CROWD LEVEL
-        // ----------------------------------------
         private string CalculateCrowdLevel(List<CrowdReport> reports)
         {
-            // If no reports → default to Low
             if (reports.Count == 0)
                 return "Low";
 
-            // Extract all crowd levels from reports
-            var levels = reports.Select(r => r.CrowdLevel).ToList();
-
-            // Find the most frequently occurring crowd level
-            var mostCommon = levels
-                .GroupBy(x => x)              // Group same values
-                .OrderByDescending(g => g.Count()) // Sort by count (highest first)
-                .First()                     // Take top group
-                .Key;                        // Get the value (Low/Medium/High)
+            var mostCommon = reports
+                .GroupBy(r => r.CrowdLevel)
+                .OrderByDescending(g => g.Count())
+                .First()
+                .Key;
 
             return mostCommon;
         }
