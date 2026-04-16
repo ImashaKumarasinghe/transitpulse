@@ -10,6 +10,8 @@ using System.Text;                                   // Encoding for JWT key
 using TransitPulse.API.Data;                         // DbContext
 using TransitPulse.API.Services;                     // AuthService
 using TransitPulse.API.Repositories;
+using TransitPulse.API.Hubs;                         // SignalR Hub class import
+
 
 // ================================
 // CREATE APPLICATION BUILDER
@@ -64,6 +66,18 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy
+            .WithOrigins("http://localhost:3000")
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
+    });
+});
+
 // ================================
 // DATABASE CONFIGURATION
 // ================================
@@ -81,6 +95,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // Register AuthService for dependency injection
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Register SignalR service for real-time communication
+// This allows backend and frontend to communicate instantly without page refresh
+builder.Services.AddSignalR();
 
 // ================================
 // JWT AUTHENTICATION CONFIGURATION
@@ -110,8 +128,7 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(key)
     };
 });
-builder.Services.AddScoped<ICrowdReportRepository, CrowdReportRepository>();
-builder.Services.AddScoped<ICrowdReportService, CrowdReportService>();
+
 
 // ================================
 // ENABLE AUTHORIZATION
@@ -129,6 +146,7 @@ var app = builder.Build();
 // MIDDLEWARE PIPELINE
 // ================================
 
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -136,6 +154,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("AllowFrontend");
 
 // Authentication must come before Authorization
 app.UseAuthentication();
@@ -143,6 +162,10 @@ app.UseAuthorization();
 
 // Map controllers
 app.MapControllers();
+
+// Map SignalR hub endpoint
+// Frontend will connect to this URL for live updates
+app.MapHub<RouteHub>("/hubs/route");
 
 // Run application
 app.Run();
